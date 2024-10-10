@@ -1,5 +1,8 @@
 #include <httplib/httplib.h>
 #include <iostream>
+#include <tuple>
+#include <chrono>
+#include <filesystem>
 
 std::string readFile(const std::string& filePath) {
     std::ifstream file(filePath, std::ios::binary);
@@ -19,27 +22,41 @@ std::string readFile(const std::string& filePath) {
     return fileData;
 }
 
+std::tuple<bool, std::chrono::duration<double>> sendFile(httplib::Client& client,
+                                                         const std::string& content,
+                                                         const std::string& fileName){
+    httplib::Headers headers{{"File-Name", fileName}};
+    auto tBegin = std::chrono::steady_clock::now();
+    auto result = client.Post(
+        "/multipart",
+        headers,
+        content.size(),
+        [&](size_t offset, size_t length, httplib::DataSink &sink) {
+            sink.write(content.data() + offset, length);
+            return true;
+        },
+        "text/plain");
+    if(result->status != 200){
+        return {false, {}};
+    } else {
+        auto tEnd = std::chrono::steady_clock::now();
+        return {true, tEnd - tBegin};
+    }
+}
+
+
 int main(){
     using namespace httplib;
 
     Client clt("127.0.0.1", 12345);
 
-    const std::string filePath = TEST_FILE_LOC;
+    auto filePath = std::filesystem::path(TEST_FILE_LOC);
     auto fileData = readFile(filePath);
-//    httplib::MultipartFormDataItems items = {
-//            { "text1", "text default", "", "" },
-//            { "text2", "aωb", "", "" },
-//            { "file1", "h\ne\n\nl\nl\no\n", fileData, "image/png" },
-//            { "file2", "{\n  \"world\", true\n}\n", "world.json", "application/json" },
-//            { "file3", "", "", "application/octet-stream" },
-//    };
-//    auto res1 = clt.Post("/multipart");
-    auto res2 = clt.Post(
-            "/multipart", fileData.size(),
-            [&](size_t offset, size_t length, DataSink &sink) {
-                sink.write(fileData.data() + offset, length);
-                return true; // return 'false' if you want to cancel the request.
-            },
-            "text/plain");
+    auto [succ, duration] = sendFile(clt, fileData, filePath.filename());
+    if(succ){
+        std::cout << "Successfully transmitted, cost " << duration.count() << " seconds\n";
+    } else{
+        std::cout << "Transmission failed!\n";
+    }
     return 0;
 }
