@@ -36,11 +36,11 @@ std::tuple<bool, std::chrono::duration<double>> sendFile(httplib::Client& client
             return true;
         },
         "text/plain");
-    if(result->status != 200){
-        return {false, {}};
-    } else {
+    if(bool(result) && result->status == 200){
         auto tEnd = std::chrono::steady_clock::now();
         return {true, tEnd - tBegin};
+    } else {
+        return {false, {}};
     }
 }
 
